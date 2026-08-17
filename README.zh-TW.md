@@ -2,6 +2,8 @@
 
 <h1 align="center">ComfyUI Prompt Assistant ✨ 提示詞小助手 V2.0</h1>
 
+[English](README.en.md) | [简体中文](README.md) | 繁體中文
+
 <img alt="GitHub Repo stars" src="https://img.shields.io/github/stars/yawiii/ComfyUI-Prompt-Assistant">
 <a href="https://space.bilibili.com/520680644"><img alt="bilibili" src="https://img.shields.io/badge/詳細視頻教程-blue?style=flat&logo=bilibili&logoColor=2300A5DC&labelColor=%23FFFFFF&color=%2307A3D7"></a>
 <a href="https://data.xflow.cc/wechat.png"><img alt="weChat" src="https://img.shields.io/badge/歡迎加入交流群-blue?logo=wechat&logoColor=green&labelColor=%23FFFFFF&color=%2307A3D7"></a>

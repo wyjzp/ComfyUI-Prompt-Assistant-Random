@@ -1,5 +1,7 @@
 # ComfyUI Prompt Assistant Random
 
+[English](README.en.md) | 简体中文 | [繁體中文](README.zh-TW.md)
+
 这是 [yawiii/ComfyUI-Prompt-Assistant](https://github.com/yawiii/ComfyUI-Prompt-Assistant) 的个人改造版。
 
 原项目提供提示词助手、标签面板、提示词优化、翻译、图像/视频反推等功能；原项目及本改造版遵循 [GNU GPL v3.0](LICENSE) 许可证。

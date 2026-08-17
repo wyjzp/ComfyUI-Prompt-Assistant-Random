@@ -1,5 +1,7 @@
 # ComfyUI Prompt Assistant Random
 
+[English](README.en.md) | [简体中文](README.md) | [繁體中文](README.zh-TW.md)
+
 This is a personal modification of [yawiii/ComfyUI-Prompt-Assistant](https://github.com/yawiii/ComfyUI-Prompt-Assistant).
 
 The upstream project provides prompt assistance, tag management, prompt enhancement, translation, image/video captioning, and related tools. The upstream project and this modification are licensed under [GNU GPL v3.0](LICENSE).
