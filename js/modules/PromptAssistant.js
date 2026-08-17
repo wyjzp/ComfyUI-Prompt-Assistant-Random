@@ -21,6 +21,7 @@ import { nodeMountService, RENDER_MODE } from "../services/NodeMountService.js";
 import { AssistantContainer, ANCHOR_POSITION } from "./AssistantContainer.js";
 import { PopupManager } from "../utils/popupManager.js";
 import { MarkdownNoteTranslate } from "../utils/markdownNoteTranslate.js";
+import { showRuntimeRandomPromptOverlay } from "./runtimeRandomPrompt.js";
 
 
 
@@ -1753,6 +1754,20 @@ class PromptAssistant {
                     );
                 },
                 visible: !isNoteNode && FEATURES.tag // Note节点不显示此按钮
+            },
+            {
+                id: 'runtime-random',
+                title: '运行时随机提示词',
+                icon: 'icon-tag',
+                onClick: (e, widget) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    showRuntimeRandomPromptOverlay(widget).catch(error => {
+                        logger.error(`运行时随机提示词面板打开失败 | ${error.message}`);
+                    });
+                },
+                // 沿用标签功能总开关；这是独立面板，不改变原标签按钮的追加行为。
+                visible: !isNoteNode && FEATURES.tag
             },
             {
                 id: 'expand',

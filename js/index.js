@@ -4,7 +4,9 @@
  */
 
 import { app } from "../../../scripts/app.js";
+import { api } from "../../../scripts/api.js";
 import { promptAssistant, PromptAssistant } from './modules/PromptAssistant.js';
+import { installRuntimeRandomQueueGrouping } from './modules/runtimeRandomPrompt.js';
 import { registerSettings } from './modules/settings.js';
 import { FEATURES as ASSISTANT_FEATURES, handleFeatureChange, setFeatureModuleDeps } from './services/features.js';
 import { EventManager } from './utils/eventManager.js';
@@ -47,6 +49,10 @@ app.registerExtension({
      */
     async setup() {
         try {
+            // 每个 Queue 动作附带一个短暂的批次标识，让后端能在“锁定”
+            // 模式下将同一随机提示词复用于整个批次。
+            installRuntimeRandomQueueGrouping(api);
+
             // 初始化节点挂载服务（需要在其他初始化之前）
             nodeMountService.initialize();
 

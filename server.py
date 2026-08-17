@@ -5,6 +5,12 @@ from .services.baidu import BaiduTranslateService
 from .services.llm import LLMService
 from .services.vlm import VisionService
 from .services.model_list import get_models_from_service
+from .services.runtime_random_prompt import (
+    RANDOM_PROPERTY_KEY,
+    choose_candidate,
+    join_prompt_text,
+    resolve_candidates,
+)
 import base64
 import json
 import traceback
@@ -41,6 +47,91 @@ ACTIVE_TASKS = {}
 
 # ---流式进度设置（运行时状态，实时生效无需重启）---
 _streaming_progress_enabled = True
+
+
+def _runtime_random_lock_key(prompt_data, node_id, input_name):
+    """Build a queue-action scope for a locked random prompt value."""
+    extra_data = prompt_data.get("extra_data", {})
+    workflow = extra_data.get("extra_pnginfo", {}).get("workflow", {})
+    client_id = str(extra_data.get("client_id", ""))
+    queue_group_id = str(workflow.get("prompt_assistant_queue_group", ""))
+    if not queue_group_id:
+        return None
+    return (client_id, queue_group_id, str(node_id), str(input_name))
+
+
+def _apply_runtime_random_prompts(prompt_data):
+    """Materialize configured random tags in the submitted graph only.
+
+    The workflow editor value stays untouched. This runs before ComfyUI validates
+    and caches the prompt, so downstream nodes and Show Text see the actual text.
+    """
+    try:
+        workflow = (
+            prompt_data.get("extra_data", {})
+            .get("extra_pnginfo", {})
+            .get("workflow", {})
+        )
+        prompt = prompt_data.get("prompt", {})
+        if not isinstance(workflow, dict) or not isinstance(prompt, dict):
+            return prompt_data
+
+        for workflow_node in workflow.get("nodes", []):
+            properties = workflow_node.get("properties", {})
+            random_config = properties.get(RANDOM_PROPERTY_KEY, {})
+            targets = (
+                random_config.get("targets", {})
+                if isinstance(random_config, dict) else {}
+            )
+            if not targets:
+                continue
+
+            node_id = str(workflow_node.get("id", ""))
+            submitted_node = prompt.get(node_id)
+            if not isinstance(submitted_node, dict):
+                continue
+            inputs = submitted_node.get("inputs", {})
+            if not isinstance(inputs, dict):
+                continue
+
+            for input_name, target_config in targets.items():
+                if not isinstance(target_config, dict) or not target_config.get("enabled"):
+                    continue
+                fixed_text = inputs.get(input_name)
+                # Linked inputs must remain graph links; only literal text widgets
+                # can be augmented by this overlay feature.
+                if isinstance(fixed_text, list) or not isinstance(fixed_text, str):
+                    continue
+
+                source_file = target_config.get("source_file")
+                if not isinstance(source_file, str) or not source_file:
+                    print(f"{WARN_PREFIX} 运行时随机提示词跳过：节点 {node_id} 缺少标签文件")
+                    continue
+                candidates = resolve_candidates(
+                    config_manager.load_tags_csv(source_file),
+                    target_config.get("selections", []),
+                )
+                if not candidates:
+                    print(
+                        f"{WARN_PREFIX} 运行时随机提示词跳过：节点 {node_id} / {input_name} "
+                        "没有可用提示词"
+                    )
+                    continue
+
+                selected = choose_candidate(
+                    candidates,
+                    locked=bool(target_config.get("locked_for_queue")),
+                    lock_key=_runtime_random_lock_key(prompt_data, node_id, input_name),
+                )
+                inputs[input_name] = join_prompt_text(fixed_text, selected.value)
+        return prompt_data
+    except Exception as error:
+        print(f"{ERROR_PREFIX} 运行时随机提示词处理失败: {error}")
+        return prompt_data
+
+
+PromptServer.instance.add_on_prompt_handler(_apply_runtime_random_prompts)
+
 
 def is_streaming_progress_enabled():
     """供其他模块查询当前流式进度设置"""
