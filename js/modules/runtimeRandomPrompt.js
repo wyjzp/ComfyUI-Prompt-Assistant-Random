@@ -126,8 +126,9 @@ function styleOverlay() {
         .pa-random-popup .popup_tab { position: relative; border: 0; border-radius: 0; padding: 9px 10px 10px; background: transparent; white-space: nowrap; opacity: .75; }
         .pa-random-popup .popup_tab:hover { opacity: 1; }
         .pa-random-popup .popup_tab.active { color: var(--input-text-color, #fff); opacity: 1; border-bottom: 3px solid #58a6ff; }
-        .pa-random-popup .popup_tab.pa-selected::after, .pa-random-popup .popup_tab.pa-partial::after { content: ''; display: inline-block; width: 7px; height: 7px; margin-left: 5px; border-radius: 50%; background: #3fb950; vertical-align: middle; }
-        .pa-random-popup .popup_tab.pa-partial::after { background: transparent; border: 2px solid #3fb950; width: 5px; height: 5px; }
+        .pa-random-popup .popup_tab { display: inline-flex; align-items: center; gap: 5px; }
+        .pa-random-popup .pa-tab-selection-indicator { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: #3fb950; flex: none; }
+        .pa-random-popup .pa-tab-selection-indicator.partial { box-sizing: border-box; background: transparent; border: 2px solid #3fb950; }
         .pa-random-popup .pa-random-body { flex: 1; min-height: 0; overflow-y: auto; padding: 12px; }
         .pa-random-popup .pa-random-meta { margin: 0 0 10px; color: var(--descrip-text, #aaa); font-size: 12px; }
         .pa-random-popup .tag_accordion { margin: 0 0 8px; border: 0; background: transparent; }
@@ -153,6 +154,8 @@ function styleOverlay() {
         .pa-random-popup .pa-random-footer { display: flex; justify-content: space-between; align-items: center; padding: 10px 14px; border-top: 1px solid var(--border-color, #555); }
         .pa-random-popup .pa-random-actions { display: flex; gap: 8px; }
         .pa-random-popup .pa-random-save { background: #238636; border-color: #3fb950; }
+        .pa-random-popup .pa-random-resize-handle { position: absolute; right: 0; bottom: 0; width: 18px; height: 18px; cursor: se-resize; z-index: 20; }
+        .pa-random-popup .pa-random-resize-handle::after { content: '⋰'; position: absolute; right: 3px; bottom: -2px; color: #aaa; font-size: 18px; }
     `;
     document.head.appendChild(style);
 }
@@ -283,8 +286,11 @@ export async function showRuntimeRandomPromptOverlay(widget) {
     popup.className = 'popup_container tag_popup pa-random-popup';
     activeOverlay = popup;
     let outsideHandler = null;
+    let resizeCleanup = null;
     const closePopup = () => {
         persist();
+        resizeCleanup?.();
+        resizeCleanup = null;
         if (outsideHandler) document.removeEventListener('mousedown', outsideHandler, true);
         if (activeOverlay === popup) activeOverlay = null;
         if (activeOverlayClose === closePopup) activeOverlayClose = null;
@@ -364,8 +370,14 @@ export async function showRuntimeRandomPromptOverlay(widget) {
                 const state = selectionState(selectionSet, [categoryName]);
                 const tab = document.createElement('button');
                 tab.type = 'button';
-                tab.className = `popup_tab ${activeCategory === categoryName ? 'active' : ''} ${state === 'all' ? 'pa-selected' : state === 'partial' ? 'pa-partial' : ''}`;
+                tab.className = `popup_tab ${activeCategory === categoryName ? 'active' : ''}`;
                 tab.textContent = categoryName;
+                if (state !== 'none') {
+                    const indicator = document.createElement('span');
+                    indicator.className = `pa-tab-selection-indicator ${state === 'partial' ? 'partial' : ''}`;
+                    indicator.title = state === 'all' ? '整个分类已选' : '分类中部分内容已选';
+                    tab.append(indicator);
+                }
                 tab.onclick = () => {
                     activeCategory = categoryName;
                     rerender();
@@ -379,7 +391,25 @@ export async function showRuntimeRandomPromptOverlay(widget) {
             }
             const categoryData = data[activeCategory];
             if (isBranch(categoryData)) {
-                content.append(makeAccordion(activeCategory, categoryData, [activeCategory], selectionSet, '', rerender, true));
+                const direct = document.createElement('div');
+                direct.className = 'pa-random-chips';
+                let firstBranch = true;
+                for (const [name, value] of Object.entries(categoryData)) {
+                    const path = [activeCategory, name];
+                    if (isBranch(value)) {
+                        direct.append(makeAccordion(name, value, path, selectionSet, '', rerender, firstBranch));
+                        firstBranch = false;
+                    } else if (searchMatches(name, value, '')) {
+                        const chip = document.createElement('button');
+                        chip.type = 'button';
+                        chip.className = `tag_item ${selectionState(selectionSet, path) === 'all' ? 'used' : ''}`;
+                        chip.textContent = name;
+                        chip.title = value;
+                        chip.onclick = () => { updateSelection(selectionSet, path); rerender(); };
+                        direct.append(chip);
+                    }
+                }
+                content.append(direct);
             }
         }
     };
@@ -411,8 +441,35 @@ export async function showRuntimeRandomPromptOverlay(widget) {
     footer.append(clearButton);
 
     body.append(meta, content);
-    popup.append(titleBar, tabsContainer, body, footer);
+    const resizeHandle = document.createElement('div');
+    resizeHandle.className = 'pa-random-resize-handle';
+    popup.append(titleBar, tabsContainer, body, footer, resizeHandle);
     document.body.append(popup);
+    const startResize = event => {
+        event.preventDefault();
+        event.stopPropagation();
+        const startX = event.clientX;
+        const startY = event.clientY;
+        const startWidth = popup.offsetWidth;
+        const startHeight = popup.offsetHeight;
+        const move = moveEvent => {
+            const rect = popup.getBoundingClientRect();
+            const width = Math.min(Math.max(420, startWidth + moveEvent.clientX - startX), window.innerWidth - rect.left - 8);
+            const height = Math.min(Math.max(320, startHeight + moveEvent.clientY - startY), window.innerHeight - rect.top - 8);
+            popup.style.width = `${width}px`;
+            popup.style.height = `${height}px`;
+        };
+        const stop = () => {
+            document.removeEventListener('mousemove', move, true);
+            document.removeEventListener('mouseup', stop, true);
+            document.body.style.userSelect = '';
+        };
+        document.addEventListener('mousemove', move, true);
+        document.addEventListener('mouseup', stop, true);
+        document.body.style.userSelect = 'none';
+        resizeCleanup = stop;
+    };
+    resizeHandle.addEventListener('mousedown', startResize, true);
     outsideHandler = event => {
         if (!popup.contains(event.target)) closePopup();
     };
