@@ -14,6 +14,7 @@ function getConfig(node, inputName) {
         placement: 'append',
         popup_width: 720,
         popup_height: 560,
+        active_category: '',
         selections: [],
         ...(root.targets?.[inputName] || {}),
     };
@@ -146,10 +147,10 @@ function styleOverlay() {
         .pa-random-popup .tag_accordion_content { display: none; padding: 2px 1px 1px; }
         .pa-random-popup .tag_accordion_content.active { display: block; }
         .pa-random-popup .pa-random-chips { display: flex; flex-wrap: wrap; gap: 1px; }
-        .pa-random-popup .tag_item { border: 0; border-radius: 12px; padding: 2px 3px; color: inherit; background: var(--comfy-input-bg, #373737); cursor: pointer; white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
-        .pa-random-popup .tag_item:hover { filter: brightness(1.15); }
-        .pa-random-popup .tag_item.used { background: #238636; color: #fff; }
-        .pa-random-popup .tag_item.partial { box-shadow: inset 0 0 0 2px #3fb950; }
+        .pa-random-popup .tag_item { border: 1px solid #555 !important; border-radius: 12px; padding: 2px 3px; color: #eee; background: #2d2d2d !important; box-shadow: 0 1px 2px #0008; cursor: pointer; white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+        .pa-random-popup .tag_item:hover { border-color: #8b949e !important; background: #3a3a3a !important; }
+        .pa-random-popup .tag_item.used { border-color: #3fb950 !important; background: #238636 !important; color: #fff; }
+        .pa-random-popup .tag_item.partial { border-color: #3fb950 !important; box-shadow: inset 0 0 0 1px #3fb950; }
         .pa-random-popup .pa-random-search-result { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 10px; margin-bottom: 6px; border-radius: 6px; background: var(--comfy-input-bg, #333); cursor: pointer; }
         .pa-random-popup .pa-random-search-result.used { background: #238636; }
         .pa-random-popup .pa-random-search-path { color: var(--descrip-text, #aaa); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -282,7 +283,11 @@ export async function showRuntimeRandomPromptOverlay(widget) {
     const sourceFile = initial.source_file || await ResourceManager.getSelectedTagFile();
     let data = sourceFile ? await ResourceManager.loadTagsCsv(sourceFile) : {};
     const selectionSet = normalizeSelections(initial.selections);
-    let activeCategory = Object.keys(data).find(key => isBranch(data[key])) || null;
+    let activeCategory = (
+        initial.active_category && isBranch(data[initial.active_category])
+            ? initial.active_category
+            : Object.keys(data).find(key => isBranch(data[key]))
+    ) || null;
     let query = '';
 
     const popup = document.createElement('div');
@@ -329,6 +334,7 @@ export async function showRuntimeRandomPromptOverlay(widget) {
             placement: placementSelect.value === 'prepend' ? 'prepend' : 'append',
             popup_width: popup?.offsetWidth || Number(initial.popup_width) || 720,
             popup_height: popup?.offsetHeight || Number(initial.popup_height) || 560,
+            active_category: activeCategory || '',
             selections: selectedPaths(selectionSet).map(path => ({ path })),
         });
     };
