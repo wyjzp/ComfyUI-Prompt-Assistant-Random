@@ -1,6 +1,6 @@
 # ComfyUI Prompt Assistant Random
 
-[English](README.en.md) | [简体中文](README.md) | [繁體中文](README.zh-TW.md)
+[简体中文](README.md) | [繁體中文](README.zh-TW.md) | English
 
 This is a personal modification of [yawiii/ComfyUI-Prompt-Assistant](https://github.com/yawiii/ComfyUI-Prompt-Assistant).
 
