@@ -34,3 +34,4 @@
 
 - 上游仓库：https://github.com/yawiii/ComfyUI-Prompt-Assistant
 - 请前往上游仓库阅读完整安装说明、原始功能说明及更新记录。
+- 如果这个插件对你有帮助，请前往原作者仓库点一个 Star，支持原作者继续维护。
