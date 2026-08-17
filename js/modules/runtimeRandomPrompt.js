@@ -3,14 +3,17 @@ import { logger } from '../utils/logger.js';
 
 const PROPERTY_KEY = 'prompt_assistant_runtime_random';
 let activeOverlay = null;
+let activeOverlayClose = null;
 
 function getConfig(node, inputName) {
     const root = node.properties?.[PROPERTY_KEY] || {};
-    return root.targets?.[inputName] || {
+    return {
         enabled: false,
         source_file: '',
         locked_for_queue: false,
+        placement: 'append',
         selections: [],
+        ...(root.targets?.[inputName] || {}),
     };
 }
 
@@ -265,7 +268,7 @@ function makeSearchResults(data, selectionSet, query, rerender) {
 export async function showRuntimeRandomPromptOverlay(widget) {
     const node = widget?.node;
     if (!node) return;
-    activeOverlay?.remove();
+    activeOverlayClose?.();
     styleOverlay();
 
     const initial = getConfig(node, widget.inputId);
@@ -279,6 +282,15 @@ export async function showRuntimeRandomPromptOverlay(widget) {
     const popup = document.createElement('div');
     popup.className = 'popup_container tag_popup pa-random-popup';
     activeOverlay = popup;
+    let outsideHandler = null;
+    const closePopup = () => {
+        persist();
+        if (outsideHandler) document.removeEventListener('mousedown', outsideHandler, true);
+        if (activeOverlay === popup) activeOverlay = null;
+        if (activeOverlayClose === closePopup) activeOverlayClose = null;
+        popup.remove();
+    };
+    activeOverlayClose = closePopup;
 
     const titleBar = document.createElement('div');
     titleBar.className = 'popup_title_bar';
@@ -287,6 +299,11 @@ export async function showRuntimeRandomPromptOverlay(widget) {
     title.textContent = '运行时随机提示词';
     const sourceSelect = document.createElement('select');
     for (const file of files) sourceSelect.add(new Option(file, file, false, file === sourceFile));
+    const placementSelect = document.createElement('select');
+    placementSelect.add(new Option('固定提示词在前', 'append'));
+    placementSelect.add(new Option('随机提示词在前', 'prepend'));
+    placementSelect.value = initial.placement === 'prepend' ? 'prepend' : 'append';
+    placementSelect.title = '随机提示词与固定提示词的拼接顺序';
     const search = document.createElement('input');
     search.className = 'pa-random-search';
     search.placeholder = '搜索标签…';
@@ -295,6 +312,15 @@ export async function showRuntimeRandomPromptOverlay(widget) {
     locked.type = 'checkbox';
     locked.checked = Boolean(initial.locked_for_queue);
     lockLabel.append(locked, document.createTextNode('锁定本批次'));
+    const persist = () => {
+        saveConfig(node, widget.inputId, {
+            enabled: enabled.checked,
+            source_file: sourceSelect.value,
+            locked_for_queue: locked.checked,
+            placement: placementSelect.value === 'prepend' ? 'prepend' : 'append',
+            selections: selectedPaths(selectionSet).map(path => ({ path })),
+        });
+    };
     const enabledLabel = document.createElement('label');
     const enabled = document.createElement('input');
     enabled.type = 'checkbox';
@@ -306,8 +332,8 @@ export async function showRuntimeRandomPromptOverlay(widget) {
     const close = document.createElement('button');
     close.className = 'pa-random-close';
     close.textContent = '×';
-    close.onclick = () => popup.remove();
-    titleBar.append(title, sourceSelect, search, options, close);
+    close.onclick = closePopup;
+    titleBar.append(title, sourceSelect, placementSelect, search, options, close);
 
     const tabsContainer = document.createElement('div');
     tabsContainer.className = 'popup_tabs_container';
@@ -323,6 +349,7 @@ export async function showRuntimeRandomPromptOverlay(widget) {
     footer.className = 'pa-random-footer';
 
     const rerender = () => {
+        persist();
         const count = candidateCount(data, selectionSet);
         meta.textContent = `候选提示词：${count} 条。点选分类、标签或具体标题即可设置随机范围；绿色为已选，绿色描边为部分选中。`;
         tabs.replaceChildren();
@@ -361,12 +388,16 @@ export async function showRuntimeRandomPromptOverlay(widget) {
         query = search.value.trim();
         rerender();
     };
+    enabled.onchange = persist;
+    locked.onchange = persist;
+    placementSelect.onchange = persist;
     sourceSelect.onchange = async () => {
         data = await ResourceManager.loadTagsCsv(sourceSelect.value);
         selectionSet.clear();
         activeCategory = Object.keys(data).find(key => isBranch(data[key])) || null;
         query = '';
         search.value = '';
+        persist();
         rerender();
     };
 
@@ -374,32 +405,18 @@ export async function showRuntimeRandomPromptOverlay(widget) {
     clearButton.textContent = '清空选择';
     clearButton.onclick = () => {
         selectionSet.clear();
+        persist();
         rerender();
     };
-    const actions = document.createElement('div');
-    actions.className = 'pa-random-actions';
-    const cancel = document.createElement('button');
-    cancel.textContent = '取消';
-    cancel.onclick = () => popup.remove();
-    const save = document.createElement('button');
-    save.className = 'pa-random-save';
-    save.textContent = '保存';
-    save.onclick = () => {
-        saveConfig(node, widget.inputId, {
-            enabled: enabled.checked,
-            source_file: sourceSelect.value,
-            locked_for_queue: locked.checked,
-            selections: selectedPaths(selectionSet).map(path => ({ path })),
-        });
-        logger.log(`运行时随机提示词已保存 | 节点:${node.id} 输入:${widget.inputId}`);
-        popup.remove();
-    };
-    actions.append(cancel, save);
-    footer.append(clearButton, actions);
+    footer.append(clearButton);
 
     body.append(meta, content);
     popup.append(titleBar, tabsContainer, body, footer);
     document.body.append(popup);
+    outsideHandler = event => {
+        if (!popup.contains(event.target)) closePopup();
+    };
+    document.addEventListener('mousedown', outsideHandler, true);
     rerender();
 
     const rect = widget.element?.getBoundingClientRect?.();

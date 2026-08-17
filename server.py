@@ -123,7 +123,14 @@ def _apply_runtime_random_prompts(prompt_data):
                     locked=bool(target_config.get("locked_for_queue")),
                     lock_key=_runtime_random_lock_key(prompt_data, node_id, input_name),
                 )
-                inputs[input_name] = join_prompt_text(fixed_text, selected.value)
+                placement = target_config.get("placement", "append")
+                if placement not in {"append", "prepend"}:
+                    placement = "append"
+                inputs[input_name] = join_prompt_text(
+                    fixed_text,
+                    selected.value,
+                    placement,
+                )
         return prompt_data
     except Exception as error:
         print(f"{ERROR_PREFIX} 运行时随机提示词处理失败: {error}")

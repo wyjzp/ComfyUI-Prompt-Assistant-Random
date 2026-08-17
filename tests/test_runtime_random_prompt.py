@@ -70,7 +70,10 @@ class RuntimeRandomPromptTests(unittest.TestCase):
     def test_join_preserves_fixed_prompt(self):
         self.assertEqual(join_prompt_text("fixed prompt", "random tag"), "fixed prompt, random tag")
         self.assertEqual(join_prompt_text("fixed prompt,", "random tag"), "fixed prompt, random tag")
-        self.assertEqual(join_prompt_text("", "random tag"), "random tag")
+        self.assertEqual(join_prompt_text("固定提示词，", "random tag"), "固定提示词, random tag")
+        self.assertEqual(join_prompt_text("固定提示词；", "random tag"), "固定提示词, random tag")
+        self.assertEqual(join_prompt_text("fixed prompt", "random tag", "prepend"), "random tag, fixed prompt")
+        self.assertEqual(join_prompt_text("", "random tag", "prepend"), "random tag")
 
     def test_locked_choice_reuses_the_first_value(self):
         store = LockedSelectionStore()

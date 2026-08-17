@@ -113,16 +113,21 @@ def resolve_candidates(tree: Mapping[str, Any], selections: Iterable[Mapping[str
     return list(unique.values())
 
 
-def join_prompt_text(fixed_text: Any, random_text: str) -> str:
-    """Combine a fixed widget value and one selected tag without dirtying UI text."""
+def join_prompt_text(
+    fixed_text: Any,
+    random_text: str,
+    placement: str = "append",
+) -> str:
+    """Combine fixed and random text with a normalized English comma."""
     fixed = "" if fixed_text is None else str(fixed_text).strip()
     selected = str(random_text).strip()
     if not fixed:
         return selected
     if not selected:
         return fixed
-    if fixed.endswith((",", "，", ";", "；", "\n")):
-        return f"{fixed} {selected}"
+    fixed = fixed.rstrip(" ,，;；\n")
+    if placement == "prepend":
+        return f"{selected}, {fixed}"
     return f"{fixed}, {selected}"
 
 
