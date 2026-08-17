@@ -65,49 +65,108 @@ function styleOverlay() {
     const style = document.createElement('style');
     style.id = 'pa-runtime-random-styles';
     style.textContent = `
-        .pa-runtime-random-overlay { position: fixed; z-index: 10000; width: min(520px, calc(100vw - 32px)); max-height: min(680px, calc(100vh - 32px)); display: flex; flex-direction: column; color: var(--fg-color, #ddd); background: var(--comfy-menu-bg, #252525); border: 1px solid var(--border-color, #555); border-radius: 8px; box-shadow: 0 12px 32px #0009; font: 13px sans-serif; }
-        .pa-runtime-random-header, .pa-runtime-random-footer { display: flex; gap: 10px; align-items: center; padding: 12px; border-bottom: 1px solid var(--border-color, #555); }
-        .pa-runtime-random-footer { border-top: 1px solid var(--border-color, #555); border-bottom: 0; justify-content: flex-end; }
-        .pa-runtime-random-header strong { flex: 1; }
-        .pa-runtime-random-body { overflow: auto; padding: 12px; }
-        .pa-runtime-random-row { display: flex; align-items: center; gap: 7px; min-height: 28px; }
-        .pa-runtime-random-branch { margin-left: 18px; border-left: 1px solid #5556; padding-left: 8px; }
+        .pa-runtime-random-overlay { position: fixed; z-index: 10000; width: min(620px, calc(100vw - 32px)); max-height: min(720px, calc(100vh - 32px)); display: flex; flex-direction: column; color: var(--fg-color, #ddd); background: var(--comfy-menu-bg, #252525); border: 1px solid var(--border-color, #555); border-radius: 10px; box-shadow: 0 12px 32px #0009; font: 13px sans-serif; overflow: hidden; }
+        .pa-runtime-random-titlebar { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-bottom: 1px solid var(--border-color, #555); }
+        .pa-runtime-random-titlebar strong { flex: 1; font-size: 14px; }
+        .pa-runtime-random-titlebar label { display: flex; align-items: center; gap: 5px; white-space: nowrap; }
+        .pa-runtime-random-tabs { display: flex; gap: 6px; flex-wrap: wrap; padding: 10px 12px 0; }
+        .pa-runtime-random-tab { padding: 5px 12px; border-radius: 6px 6px 0 0; cursor: pointer; border: 1px solid var(--border-color, #555); border-bottom: 0; background: var(--comfy-input-bg, #333); color: inherit; }
+        .pa-runtime-random-tab.active { background: var(--comfy-menu-bg, #2a2a2a); border-color: var(--input-text-color, #888); }
+        .pa-runtime-random-tab .pa-count { opacity: .65; font-size: 11px; margin-left: 4px; }
+        .pa-runtime-random-body { flex: 1; overflow: auto; padding: 12px; border-top: 1px solid var(--border-color, #555); }
         .pa-runtime-random-meta { margin: 0 0 10px; color: var(--descrip-text, #aaa); line-height: 1.5; }
-        .pa-runtime-random-overlay select, .pa-runtime-random-overlay button { color: inherit; background: var(--comfy-input-bg, #333); border: 1px solid var(--border-color, #555); border-radius: 4px; padding: 5px 8px; }
-        .pa-runtime-random-overlay button { cursor: pointer; }
-        .pa-runtime-random-overlay .pa-runtime-random-close { border: 0; font-size: 18px; padding: 0 6px; }
-        .pa-runtime-random-overlay label { cursor: pointer; user-select: none; }
+        .pa-runtime-random-footer { display: flex; gap: 10px; justify-content: flex-end; align-items: center; padding: 10px 12px; border-top: 1px solid var(--border-color, #555); }
+        .pa-runtime-random-group { margin-bottom: 10px; }
+        .pa-runtime-random-group-title { display: flex; align-items: center; gap: 8px; padding: 6px 4px; cursor: pointer; user-select: none; font-weight: 600; }
+        .pa-runtime-random-group-title .pa-arrow { transition: transform .15s; }
+        .pa-runtime-random-group.open > .pa-runtime-random-group-title .pa-arrow { transform: rotate(90deg); }
+        .pa-runtime-random-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+        .pa-runtime-random-chips.collapsed { display: none; }
+        .pa-runtime-random-chip { padding: 5px 10px; border-radius: 8px; cursor: pointer; border: 1px solid var(--border-color, #555); background: var(--comfy-input-bg, #333); color: inherit; }
+        .pa-runtime-random-chip:hover { border-color: var(--input-text-color, #999); }
+        .pa-runtime-random-chip.selected { background: var(--success-bg, #2d5a3d); border-color: var(--success-text, #8fd19a); color: var(--success-text, #c6f0ce); }
+        .pa-runtime-random-chip.leaf { background: var(--comfy-input-bg, #3a3a3a); }
+        .pa-runtime-random-chip.leaf.selected { background: var(--success-bg, #2d5a3d); }
+        .pa-runtime-random-chip .pa-value { opacity: .7; font-size: 11px; margin-left: 6px; }
+        .pa-runtime-random-empty { padding: 30px 0; text-align: center; color: var(--descrip-text, #888); }
+        .pa-runtime-random-overlay select, .pa-runtime-random-overlay button { color: inherit; background: var(--comfy-input-bg, #333); border: 1px solid var(--border-color, #555); border-radius: 5px; padding: 5px 10px; cursor: pointer; }
+        .pa-runtime-random-footer .pa-save { background: var(--success-bg, #2d5a3d); border-color: var(--success-text, #8fd19a); }
     `;
     document.head.appendChild(style);
 }
 
-function buildTree(data, selectedPaths, onChange, path = []) {
-    const fragment = document.createDocumentFragment();
+function toggleSelection(selectedPaths, path, onChange) {
+    const key = pathKey(path);
+    if (selectedPaths.has(key)) selectedPaths.delete(key);
+    else selectedPaths.add(key);
+    onChange();
+}
+
+function addChip(container, name, value, path, selectedPaths, onChange) {
+    const key = pathKey(path);
+    const chip = document.createElement('button');
+    chip.type = 'button';
+    chip.className = 'pa-runtime-random-chip' + (value !== undefined ? ' leaf' : '');
+    chip.textContent = name;
+    chip.dataset.path = key;
+    if (value !== undefined) {
+        const span = document.createElement('span');
+        span.className = 'pa-value';
+        span.textContent = value;
+        chip.append(span);
+    }
+    const refresh = () => chip.classList.toggle('selected', selectedPaths.has(key));
+    refresh();
+    chip.onclick = () => {
+        toggleSelection(selectedPaths, path, onChange);
+        refresh();
+    };
+    container.append(chip);
+}
+
+function buildGroup(data, selectedPaths, onChange, path = []) {
+    const group = document.createElement('div');
+    group.className = 'pa-runtime-random-group open';
+    const title = document.createElement('div');
+    title.className = 'pa-runtime-random-group-title';
+    const arrow = document.createElement('span');
+    arrow.className = 'pa-arrow';
+    arrow.textContent = '▸';
+    const chips = document.createElement('div');
+    chips.className = 'pa-runtime-random-chips';
+    title.append(arrow);
     for (const [name, value] of Object.entries(data || {})) {
         const currentPath = [...path, name];
-        const key = pathKey(currentPath);
-        const row = document.createElement('div');
-        row.className = 'pa-runtime-random-row';
-        const checkbox = document.createElement('input');
-        checkbox.type = 'checkbox';
-        checkbox.checked = selectedPaths.has(key);
-        const label = document.createElement('label');
-        label.textContent = typeof value === 'string' ? `${name}  —  ${value}` : name;
-        checkbox.addEventListener('change', () => {
-            if (checkbox.checked) selectedPaths.add(key);
-            else selectedPaths.delete(key);
-            onChange();
-        });
-        row.append(checkbox, label);
-        fragment.append(row);
         if (value && typeof value === 'object') {
-            const branch = document.createElement('div');
-            branch.className = 'pa-runtime-random-branch';
-            branch.append(buildTree(value, selectedPaths, onChange, currentPath));
-            fragment.append(branch);
+            title.append(buildGroupTitle(name, value, currentPath, selectedPaths, onChange, chips));
+        } else {
+            addChip(chips, name, value, currentPath, selectedPaths, onChange);
         }
     }
-    return fragment;
+    title.addEventListener('click', () => group.classList.toggle('open'));
+    group.append(title, chips);
+    return group;
+}
+
+function buildGroupTitle(name, subtree, currentPath, selectedPaths, onChange, container) {
+    const wrapper = document.createElement('span');
+    wrapper.className = 'pa-runtime-random-group-title-name';
+    const label = document.createElement('span');
+    label.textContent = name;
+    wrapper.append(label);
+    wrapper.classList.toggle('selected', selectedPaths.has(pathKey(currentPath)));
+    wrapper.onclick = (event) => {
+        event.stopPropagation();
+        toggleSelection(selectedPaths, currentPath, onChange);
+        wrapper.classList.toggle('selected', selectedPaths.has(pathKey(currentPath)));
+    };
+    container.append(wrapper);
+    // Render children beneath this group title.
+    const childContainer = document.createElement('div');
+    childContainer.className = 'pa-runtime-random-group';
+    childContainer.append(buildGroup(subtree, selectedPaths, onChange, currentPath));
+    container.append(childContainer);
+    return wrapper;
 }
 
 export async function showRuntimeRandomPromptOverlay(widget) {
@@ -125,59 +184,79 @@ export async function showRuntimeRandomPromptOverlay(widget) {
     const overlay = document.createElement('div');
     overlay.className = 'pa-runtime-random-overlay';
     activeOverlay = overlay;
-    const header = document.createElement('div');
-    header.className = 'pa-runtime-random-header';
+
+    const titleBar = document.createElement('div');
+    titleBar.className = 'pa-runtime-random-titlebar';
     const title = document.createElement('strong');
     title.textContent = '运行时随机提示词';
-    const close = document.createElement('button');
-    close.className = 'pa-runtime-random-close';
-    close.textContent = '×';
-    close.onclick = () => overlay.remove();
-    header.append(title, close);
-
-    const body = document.createElement('div');
-    body.className = 'pa-runtime-random-body';
-    const sourceRow = document.createElement('div');
-    sourceRow.className = 'pa-runtime-random-row';
-    const sourceLabel = document.createElement('label');
-    sourceLabel.textContent = '标签文件';
     const sourceSelect = document.createElement('select');
-    for (const file of files) {
-        const option = new Option(file, file, false, file === sourceFile);
-        sourceSelect.add(option);
-    }
-    sourceRow.append(sourceLabel, sourceSelect);
-    const enableRow = document.createElement('div');
-    enableRow.className = 'pa-runtime-random-row';
-    const enabled = document.createElement('input');
-    enabled.type = 'checkbox';
-    enabled.checked = Boolean(initial.enabled);
-    const enabledLabel = document.createElement('label');
-    enabledLabel.textContent = '启用：每次运行从下方范围随机抽取一条提示词';
-    enableRow.append(enabled, enabledLabel);
-    const lockRow = document.createElement('div');
-    lockRow.className = 'pa-runtime-random-row';
+    for (const file of files) sourceSelect.add(new Option(file, file, false, file === sourceFile));
+    const lockLabel = document.createElement('label');
     const locked = document.createElement('input');
     locked.type = 'checkbox';
     locked.checked = Boolean(initial.locked_for_queue);
-    const lockLabel = document.createElement('label');
-    lockLabel.textContent = '锁定本次随机结果（同一 Queue 批次使用同一条）';
-    lockRow.append(locked, lockLabel);
+    lockLabel.append(locked, document.createTextNode('锁定本批次'));
+    const enabledLabel = document.createElement('label');
+    const enabled = document.createElement('input');
+    enabled.type = 'checkbox';
+    enabled.checked = Boolean(initial.enabled);
+    enabledLabel.append(enabled, document.createTextNode('启用随机'));
+    const close = document.createElement('button');
+    close.textContent = '×';
+    close.onclick = () => overlay.remove();
+    titleBar.append(title, sourceSelect, lockLabel, enabledLabel, close);
+
+    const tabs = document.createElement('div');
+    tabs.className = 'pa-runtime-random-tabs';
+    const body = document.createElement('div');
+    body.className = 'pa-runtime-random-body';
     const meta = document.createElement('p');
     meta.className = 'pa-runtime-random-meta';
-    const tree = document.createElement('div');
+    const content = document.createElement('div');
 
+    let activeCategory = null;
     const render = () => {
-        tree.replaceChildren(buildTree(data, selectedPaths, render));
-        meta.textContent = `候选提示词：${candidateCount(data, [...selectedPaths].map(key => ({ path: JSON.parse(key) })))} 条。选上级而不选下级时，将使用该上级全部提示词；选下级或具体提示词时，将自动缩小范围。`;
+        meta.textContent = `候选提示词：${candidateCount(data, [...selectedPaths].map(key => ({ path: JSON.parse(key) })))} 条。选上级而不选下级时将使用该上级全部提示词；选中下级或具体提示词时自动缩小范围。`;
+        tabs.replaceChildren();
+        content.replaceChildren();
+        for (const [categoryName, subtree] of Object.entries(data || {})) {
+            if (!subtree || typeof subtree !== 'object') continue;
+            const tab = document.createElement('button');
+            tab.type = 'button';
+            tab.className = 'pa-runtime-random-tab';
+            const count = document.createElement('span');
+            count.className = 'pa-count';
+            count.textContent = String(collectLeaves(subtree).length);
+            tab.append(document.createTextNode(categoryName), count);
+            tab.onclick = () => {
+                activeCategory = categoryName;
+                tabs.querySelectorAll('.pa-runtime-random-tab').forEach(t => t.classList.remove('active'));
+                tab.classList.add('active');
+                content.replaceChildren(buildGroup(subtree, selectedPaths, render));
+            };
+            tabs.append(tab);
+            if (!activeCategory) {
+                activeCategory = categoryName;
+                tab.classList.add('active');
+            }
+        }
+        if (activeCategory && data?.[activeCategory] && typeof data[activeCategory] === 'object') {
+            content.replaceChildren(buildGroup(data[activeCategory], selectedPaths, render));
+        } else if (!content.childNodes.length) {
+            const empty = document.createElement('div');
+            empty.className = 'pa-runtime-random-empty';
+            empty.textContent = '没有可用标签数据';
+            content.append(empty);
+        }
     };
     sourceSelect.onchange = async () => {
         data = await ResourceManager.loadTagsCsv(sourceSelect.value);
         selectedPaths.clear();
+        activeCategory = null;
         render();
     };
     render();
-    body.append(sourceRow, enableRow, lockRow, meta, tree);
+    body.append(meta, content);
 
     const footer = document.createElement('div');
     footer.className = 'pa-runtime-random-footer';
@@ -185,6 +264,7 @@ export async function showRuntimeRandomPromptOverlay(widget) {
     cancel.textContent = '取消';
     cancel.onclick = () => overlay.remove();
     const apply = document.createElement('button');
+    apply.className = 'pa-save';
     apply.textContent = '保存';
     apply.onclick = () => {
         saveConfig(node, widget.inputId, {
@@ -197,7 +277,7 @@ export async function showRuntimeRandomPromptOverlay(widget) {
         overlay.remove();
     };
     footer.append(cancel, apply);
-    overlay.append(header, body, footer);
+    overlay.append(titleBar, tabs, body, footer);
     document.body.append(overlay);
 
     const rect = widget.element?.getBoundingClientRect?.();
