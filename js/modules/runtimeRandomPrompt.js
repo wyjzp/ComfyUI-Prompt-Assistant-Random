@@ -23,41 +23,86 @@ function saveConfig(node, inputName, config) {
     node.graph?.setDirtyCanvas?.(true, true);
 }
 
-function collectLeaves(value, path = []) {
-    if (typeof value === 'string' && value.trim()) {
-        return [{ path, value: value.trim() }];
-    }
-    if (!value || typeof value !== 'object') return [];
-    return Object.entries(value).flatMap(([key, child]) => collectLeaves(child, [...path, key]));
-}
-
 function pathKey(path) {
     return JSON.stringify(path);
 }
 
-function normalizeSelections(selections) {
-    const unique = new Map();
-    for (const selection of selections || []) {
-        if (Array.isArray(selection?.path) && selection.path.length) {
-            unique.set(pathKey(selection.path), { path: selection.path });
-        }
-    }
-    return [...unique.values()];
+function isBranch(value) {
+    return value !== null && typeof value === 'object';
 }
 
-function candidateCount(data, selections) {
-    const selected = normalizeSelections(selections);
-    const selectedPaths = selected.map(item => item.path);
-    const effective = selectedPaths.filter(path => !selectedPaths.some(
-        other => other.length > path.length && path.every((part, index) => other[index] === part)
+function getNodeAtPath(data, path) {
+    let current = data;
+    for (const segment of path) {
+        if (!isBranch(current) || !(segment in current)) return undefined;
+        current = current[segment];
+    }
+    return current;
+}
+
+function collectLeaves(value, path = []) {
+    if (typeof value === 'string' && value.trim()) {
+        return [{ path, name: path.at(-1), value: value.trim() }];
+    }
+    if (!isBranch(value)) return [];
+    return Object.entries(value).flatMap(([name, child]) => (
+        collectLeaves(child, [...path, name])
     ));
+}
+
+function normalizeSelections(selections) {
+    return new Set(
+        (selections || [])
+            .filter(item => Array.isArray(item?.path) && item.path.length)
+            .map(item => pathKey(item.path))
+    );
+}
+
+function selectedPaths(selectionSet) {
+    return [...selectionSet].map(key => JSON.parse(key));
+}
+
+function hasSelectedDescendant(selectionSet, path) {
+    return selectedPaths(selectionSet).some(other => (
+        other.length > path.length && path.every((part, index) => other[index] === part)
+    ));
+}
+
+function selectionState(selectionSet, path) {
+    if (selectionSet.has(pathKey(path))) return 'all';
+    return hasSelectedDescendant(selectionSet, path) ? 'partial' : 'none';
+}
+
+function effectiveSelectedPaths(selectionSet) {
+    const paths = selectedPaths(selectionSet);
+    return paths.filter(path => !paths.some(other => (
+        other.length > path.length && path.every((part, index) => other[index] === part)
+    )));
+}
+
+function candidateCount(data, selectionSet) {
     const values = new Set();
-    for (const path of effective) {
-        let current = data;
-        for (const segment of path) current = current?.[segment];
-        for (const leaf of collectLeaves(current, path)) values.add(leaf.value);
+    for (const path of effectiveSelectedPaths(selectionSet)) {
+        for (const leaf of collectLeaves(getNodeAtPath(data, path), path)) {
+            values.add(leaf.value);
+        }
     }
     return values.size;
+}
+
+function searchMatches(name, value, query) {
+    if (!query) return true;
+    const lower = query.toLocaleLowerCase();
+    return name.toLocaleLowerCase().includes(lower)
+        || (typeof value === 'string' && value.toLocaleLowerCase().includes(lower));
+}
+
+function branchMatches(value, path, query) {
+    if (!query) return true;
+    return collectLeaves(value, path).some(leaf => (
+        searchMatches(leaf.name, leaf.value, query)
+        || leaf.path.some(segment => segment.toLocaleLowerCase().includes(query.toLocaleLowerCase()))
+    ));
 }
 
 function styleOverlay() {
@@ -65,108 +110,156 @@ function styleOverlay() {
     const style = document.createElement('style');
     style.id = 'pa-runtime-random-styles';
     style.textContent = `
-        .pa-runtime-random-overlay { position: fixed; z-index: 10000; width: min(620px, calc(100vw - 32px)); max-height: min(720px, calc(100vh - 32px)); display: flex; flex-direction: column; color: var(--fg-color, #ddd); background: var(--comfy-menu-bg, #252525); border: 1px solid var(--border-color, #555); border-radius: 10px; box-shadow: 0 12px 32px #0009; font: 13px sans-serif; overflow: hidden; }
-        .pa-runtime-random-titlebar { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-bottom: 1px solid var(--border-color, #555); }
-        .pa-runtime-random-titlebar strong { flex: 1; font-size: 14px; }
-        .pa-runtime-random-titlebar label { display: flex; align-items: center; gap: 5px; white-space: nowrap; }
-        .pa-runtime-random-tabs { display: flex; gap: 6px; flex-wrap: wrap; padding: 10px 12px 0; }
-        .pa-runtime-random-tab { padding: 5px 12px; border-radius: 6px 6px 0 0; cursor: pointer; border: 1px solid var(--border-color, #555); border-bottom: 0; background: var(--comfy-input-bg, #333); color: inherit; }
-        .pa-runtime-random-tab.active { background: var(--comfy-menu-bg, #2a2a2a); border-color: var(--input-text-color, #888); }
-        .pa-runtime-random-tab .pa-count { opacity: .65; font-size: 11px; margin-left: 4px; }
-        .pa-runtime-random-body { flex: 1; overflow: auto; padding: 12px; border-top: 1px solid var(--border-color, #555); }
-        .pa-runtime-random-meta { margin: 0 0 10px; color: var(--descrip-text, #aaa); line-height: 1.5; }
-        .pa-runtime-random-footer { display: flex; gap: 10px; justify-content: flex-end; align-items: center; padding: 10px 12px; border-top: 1px solid var(--border-color, #555); }
-        .pa-runtime-random-group { margin-bottom: 10px; }
-        .pa-runtime-random-group-title { display: flex; align-items: center; gap: 8px; padding: 6px 4px; cursor: pointer; user-select: none; font-weight: 600; }
-        .pa-runtime-random-group-title .pa-arrow { transition: transform .15s; }
-        .pa-runtime-random-group.open > .pa-runtime-random-group-title .pa-arrow { transform: rotate(90deg); }
-        .pa-runtime-random-chips { display: flex; flex-wrap: wrap; gap: 6px; }
-        .pa-runtime-random-chips.collapsed { display: none; }
-        .pa-runtime-random-chip { padding: 5px 10px; border-radius: 8px; cursor: pointer; border: 1px solid var(--border-color, #555); background: var(--comfy-input-bg, #333); color: inherit; }
-        .pa-runtime-random-chip:hover { border-color: var(--input-text-color, #999); }
-        .pa-runtime-random-chip.selected { background: var(--success-bg, #2d5a3d); border-color: var(--success-text, #8fd19a); color: var(--success-text, #c6f0ce); }
-        .pa-runtime-random-chip.leaf { background: var(--comfy-input-bg, #3a3a3a); }
-        .pa-runtime-random-chip.leaf.selected { background: var(--success-bg, #2d5a3d); }
-        .pa-runtime-random-chip .pa-value { opacity: .7; font-size: 11px; margin-left: 6px; }
-        .pa-runtime-random-empty { padding: 30px 0; text-align: center; color: var(--descrip-text, #888); }
-        .pa-runtime-random-overlay select, .pa-runtime-random-overlay button { color: inherit; background: var(--comfy-input-bg, #333); border: 1px solid var(--border-color, #555); border-radius: 5px; padding: 5px 10px; cursor: pointer; }
-        .pa-runtime-random-footer .pa-save { background: var(--success-bg, #2d5a3d); border-color: var(--success-text, #8fd19a); }
+        .pa-random-popup { position: fixed; z-index: 10000; width: min(720px, calc(100vw - 32px)); height: min(560px, calc(100vh - 32px)); display: flex; flex-direction: column; color: var(--fg-color, #ddd); background: var(--comfy-menu-bg, #252525); border: 1px solid var(--border-color, #555); border-radius: 10px; box-shadow: 0 14px 36px #000b; font: 14px sans-serif; overflow: hidden; }
+        .pa-random-popup .popup_title_bar { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-bottom: 1px solid var(--border-color, #555); }
+        .pa-random-popup .pa-random-title { font-weight: 700; font-size: 15px; white-space: nowrap; }
+        .pa-random-popup .pa-random-search { flex: 1; min-width: 120px; padding: 7px 12px; color: inherit; background: var(--comfy-input-bg, #333); border: 1px solid var(--border-color, #555); border-radius: 18px; }
+        .pa-random-popup .pa-random-options { display: flex; gap: 9px; white-space: nowrap; font-size: 12px; }
+        .pa-random-popup .pa-random-options label { display: flex; gap: 4px; align-items: center; cursor: pointer; }
+        .pa-random-popup button, .pa-random-popup select { color: inherit; background: var(--comfy-input-bg, #333); border: 1px solid var(--border-color, #555); border-radius: 5px; padding: 5px 9px; cursor: pointer; }
+        .pa-random-popup .pa-random-close { border: 0; font-size: 20px; padding: 0 5px; }
+        .pa-random-popup .popup_tabs_container { display: flex; min-height: 44px; overflow-x: auto; border-bottom: 1px solid var(--border-color, #555); scrollbar-width: thin; }
+        .pa-random-popup .popup_tabs { display: flex; gap: 4px; align-items: flex-end; padding: 5px 10px 0; }
+        .pa-random-popup .popup_tab { position: relative; border: 0; border-radius: 0; padding: 9px 10px 10px; background: transparent; white-space: nowrap; opacity: .75; }
+        .pa-random-popup .popup_tab:hover { opacity: 1; }
+        .pa-random-popup .popup_tab.active { color: var(--input-text-color, #fff); opacity: 1; border-bottom: 3px solid #58a6ff; }
+        .pa-random-popup .popup_tab.pa-selected::after, .pa-random-popup .popup_tab.pa-partial::after { content: ''; display: inline-block; width: 7px; height: 7px; margin-left: 5px; border-radius: 50%; background: #3fb950; vertical-align: middle; }
+        .pa-random-popup .popup_tab.pa-partial::after { background: transparent; border: 2px solid #3fb950; width: 5px; height: 5px; }
+        .pa-random-popup .pa-random-body { flex: 1; min-height: 0; overflow-y: auto; padding: 12px; }
+        .pa-random-popup .pa-random-meta { margin: 0 0 10px; color: var(--descrip-text, #aaa); font-size: 12px; }
+        .pa-random-popup .tag_accordion { margin: 0 0 8px; border: 0; background: transparent; }
+        .pa-random-popup .tag_accordion_header { display: flex; align-items: center; gap: 8px; padding: 9px 12px; color: inherit; background: #233044; border-radius: 7px; cursor: pointer; user-select: none; }
+        .pa-random-popup .tag_accordion_header.pa-selected { background: #1e6b36; }
+        .pa-random-popup .tag_accordion_header.pa-partial { box-shadow: inset 3px 0 #3fb950; }
+        .pa-random-popup .pa-random-select-indicator { display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px; border: 1px solid #888; border-radius: 4px; font-size: 12px; color: transparent; flex: none; }
+        .pa-random-popup .pa-random-select-indicator.all { color: #fff; background: #238636; border-color: #3fb950; }
+        .pa-random-popup .pa-random-select-indicator.partial { border-color: #3fb950; background: linear-gradient(90deg, #3fb950 50%, transparent 50%); }
+        .pa-random-popup .tag_accordion_title { flex: 1; }
+        .pa-random-popup .pa-random-count { color: #aab7c4; font-size: 12px; font-weight: normal; }
+        .pa-random-popup .tag_accordion_content { display: none; padding: 12px 6px 4px; }
+        .pa-random-popup .tag_accordion_content.active { display: block; }
+        .pa-random-popup .pa-random-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+        .pa-random-popup .tag_item { border: 0; border-radius: 18px; padding: 8px 12px; color: inherit; background: var(--comfy-input-bg, #373737); cursor: pointer; white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+        .pa-random-popup .tag_item:hover { filter: brightness(1.15); }
+        .pa-random-popup .tag_item.used { background: #238636; color: #fff; }
+        .pa-random-popup .tag_item.partial { box-shadow: inset 0 0 0 2px #3fb950; }
+        .pa-random-popup .pa-random-search-result { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 10px; margin-bottom: 6px; border-radius: 6px; background: var(--comfy-input-bg, #333); cursor: pointer; }
+        .pa-random-popup .pa-random-search-result.used { background: #238636; }
+        .pa-random-popup .pa-random-search-path { color: var(--descrip-text, #aaa); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .pa-random-popup .pa-random-empty { padding: 45px 0; color: var(--descrip-text, #888); text-align: center; }
+        .pa-random-popup .pa-random-footer { display: flex; justify-content: space-between; align-items: center; padding: 10px 14px; border-top: 1px solid var(--border-color, #555); }
+        .pa-random-popup .pa-random-actions { display: flex; gap: 8px; }
+        .pa-random-popup .pa-random-save { background: #238636; border-color: #3fb950; }
     `;
     document.head.appendChild(style);
 }
 
-function toggleSelection(selectedPaths, path, onChange) {
+function updateSelection(selectionSet, path) {
     const key = pathKey(path);
-    if (selectedPaths.has(key)) selectedPaths.delete(key);
-    else selectedPaths.add(key);
-    onChange();
+    if (selectionSet.has(key)) selectionSet.delete(key);
+    else selectionSet.add(key);
 }
 
-function addChip(container, name, value, path, selectedPaths, onChange) {
-    const key = pathKey(path);
-    const chip = document.createElement('button');
-    chip.type = 'button';
-    chip.className = 'pa-runtime-random-chip' + (value !== undefined ? ' leaf' : '');
-    chip.textContent = name;
-    chip.dataset.path = key;
-    if (value !== undefined) {
-        const span = document.createElement('span');
-        span.className = 'pa-value';
-        span.textContent = value;
-        chip.append(span);
-    }
-    const refresh = () => chip.classList.toggle('selected', selectedPaths.has(key));
-    refresh();
-    chip.onclick = () => {
-        toggleSelection(selectedPaths, path, onChange);
-        refresh();
-    };
-    container.append(chip);
+function makeIndicator(state) {
+    const indicator = document.createElement('span');
+    indicator.className = `pa-random-select-indicator ${state}`;
+    indicator.textContent = state === 'all' ? '✓' : '';
+    return indicator;
 }
 
-function buildGroup(data, selectedPaths, onChange, path = []) {
-    const group = document.createElement('div');
-    group.className = 'pa-runtime-random-group open';
-    const title = document.createElement('div');
-    title.className = 'pa-runtime-random-group-title';
+function makeAccordion(name, value, path, selectionSet, query, rerender, open = false) {
+    const accordion = document.createElement('div');
+    accordion.className = 'tag_accordion';
+    const state = selectionState(selectionSet, path);
+    const header = document.createElement('div');
+    header.className = `tag_accordion_header ${state === 'all' ? 'pa-selected' : state === 'partial' ? 'pa-partial' : ''}`;
     const arrow = document.createElement('span');
-    arrow.className = 'pa-arrow';
-    arrow.textContent = '▸';
+    arrow.textContent = open ? '▾' : '▸';
+    const title = document.createElement('span');
+    title.className = 'tag_accordion_title';
+    title.textContent = name;
+    const count = document.createElement('span');
+    count.className = 'pa-random-count';
+    count.textContent = `${collectLeaves(value, path).length}`;
+    const content = document.createElement('div');
+    content.className = `tag_accordion_content ${open ? 'active' : ''}`;
+
+    const toggleButton = makeIndicator(state);
+    toggleButton.title = '选中或取消整个分类';
+    toggleButton.onclick = event => {
+        event.stopPropagation();
+        updateSelection(selectionSet, path);
+        rerender();
+    };
+    header.onclick = () => {
+        const expanded = content.classList.toggle('active');
+        arrow.textContent = expanded ? '▾' : '▸';
+    };
+    header.append(arrow, toggleButton, title, count);
+
+    let firstBranch = true;
     const chips = document.createElement('div');
-    chips.className = 'pa-runtime-random-chips';
-    title.append(arrow);
-    for (const [name, value] of Object.entries(data || {})) {
-        const currentPath = [...path, name];
-        if (value && typeof value === 'object') {
-            title.append(buildGroupTitle(name, value, currentPath, selectedPaths, onChange, chips));
-        } else {
-            addChip(chips, name, value, currentPath, selectedPaths, onChange);
+    chips.className = 'pa-random-chips';
+    for (const [childName, childValue] of Object.entries(value)) {
+        const childPath = [...path, childName];
+        if (isBranch(childValue)) {
+            if (branchMatches(childValue, childPath, query)) {
+                content.append(makeAccordion(
+                    childName, childValue, childPath, selectionSet, query, rerender,
+                    Boolean(query) || firstBranch
+                ));
+                firstBranch = false;
+            }
+        } else if (searchMatches(childName, childValue, query)) {
+            const stateForLeaf = selectionState(selectionSet, childPath);
+            const chip = document.createElement('button');
+            chip.type = 'button';
+            chip.className = `tag_item ${stateForLeaf === 'all' ? 'used' : ''}`;
+            chip.textContent = childName;
+            chip.title = childValue;
+            chip.onclick = () => {
+                updateSelection(selectionSet, childPath);
+                rerender();
+            };
+            chips.append(chip);
         }
     }
-    title.addEventListener('click', () => group.classList.toggle('open'));
-    group.append(title, chips);
-    return group;
+    if (chips.childNodes.length) content.prepend(chips);
+    accordion.append(header, content);
+    return accordion;
 }
 
-function buildGroupTitle(name, subtree, currentPath, selectedPaths, onChange, container) {
-    const wrapper = document.createElement('span');
-    wrapper.className = 'pa-runtime-random-group-title-name';
-    const label = document.createElement('span');
-    label.textContent = name;
-    wrapper.append(label);
-    wrapper.classList.toggle('selected', selectedPaths.has(pathKey(currentPath)));
-    wrapper.onclick = (event) => {
-        event.stopPropagation();
-        toggleSelection(selectedPaths, currentPath, onChange);
-        wrapper.classList.toggle('selected', selectedPaths.has(pathKey(currentPath)));
-    };
-    container.append(wrapper);
-    // Render children beneath this group title.
-    const childContainer = document.createElement('div');
-    childContainer.className = 'pa-runtime-random-group';
-    childContainer.append(buildGroup(subtree, selectedPaths, onChange, currentPath));
-    container.append(childContainer);
-    return wrapper;
+function makeSearchResults(data, selectionSet, query, rerender) {
+    const container = document.createElement('div');
+    const matches = collectLeaves(data).filter(leaf => (
+        searchMatches(leaf.name, leaf.value, query)
+        || leaf.path.slice(0, -1).some(part => part.toLocaleLowerCase().includes(query.toLocaleLowerCase()))
+    ));
+    if (!matches.length) {
+        const empty = document.createElement('div');
+        empty.className = 'pa-random-empty';
+        empty.textContent = '没有匹配的标签';
+        container.append(empty);
+        return container;
+    }
+    for (const leaf of matches) {
+        const state = selectionState(selectionSet, leaf.path);
+        const row = document.createElement('div');
+        row.className = `pa-random-search-result ${state === 'all' ? 'used' : ''}`;
+        row.title = leaf.value;
+        const name = document.createElement('strong');
+        name.textContent = leaf.name;
+        const path = document.createElement('span');
+        path.className = 'pa-random-search-path';
+        path.textContent = leaf.path.slice(0, -1).join(' / ');
+        row.append(name, path);
+        row.onclick = () => {
+            updateSelection(selectionSet, leaf.path);
+            rerender();
+        };
+        container.append(row);
+    }
+    return container;
 }
 
 export async function showRuntimeRandomPromptOverlay(widget) {
@@ -179,18 +272,24 @@ export async function showRuntimeRandomPromptOverlay(widget) {
     const files = await ResourceManager.getTagFileList();
     const sourceFile = initial.source_file || await ResourceManager.getSelectedTagFile();
     let data = sourceFile ? await ResourceManager.loadTagsCsv(sourceFile) : {};
-    const selectedPaths = new Set((initial.selections || []).map(item => pathKey(item.path)));
+    const selectionSet = normalizeSelections(initial.selections);
+    let activeCategory = Object.keys(data).find(key => isBranch(data[key])) || null;
+    let query = '';
 
-    const overlay = document.createElement('div');
-    overlay.className = 'pa-runtime-random-overlay';
-    activeOverlay = overlay;
+    const popup = document.createElement('div');
+    popup.className = 'popup_container tag_popup pa-random-popup';
+    activeOverlay = popup;
 
     const titleBar = document.createElement('div');
-    titleBar.className = 'pa-runtime-random-titlebar';
-    const title = document.createElement('strong');
+    titleBar.className = 'popup_title_bar';
+    const title = document.createElement('span');
+    title.className = 'pa-random-title';
     title.textContent = '运行时随机提示词';
     const sourceSelect = document.createElement('select');
     for (const file of files) sourceSelect.add(new Option(file, file, false, file === sourceFile));
+    const search = document.createElement('input');
+    search.className = 'pa-random-search';
+    search.placeholder = '搜索标签…';
     const lockLabel = document.createElement('label');
     const locked = document.createElement('input');
     locked.type = 'checkbox';
@@ -201,88 +300,111 @@ export async function showRuntimeRandomPromptOverlay(widget) {
     enabled.type = 'checkbox';
     enabled.checked = Boolean(initial.enabled);
     enabledLabel.append(enabled, document.createTextNode('启用随机'));
+    const options = document.createElement('span');
+    options.className = 'pa-random-options';
+    options.append(lockLabel, enabledLabel);
     const close = document.createElement('button');
+    close.className = 'pa-random-close';
     close.textContent = '×';
-    close.onclick = () => overlay.remove();
-    titleBar.append(title, sourceSelect, lockLabel, enabledLabel, close);
+    close.onclick = () => popup.remove();
+    titleBar.append(title, sourceSelect, search, options, close);
 
+    const tabsContainer = document.createElement('div');
+    tabsContainer.className = 'popup_tabs_container';
     const tabs = document.createElement('div');
-    tabs.className = 'pa-runtime-random-tabs';
+    tabs.className = 'popup_tabs';
+    tabsContainer.append(tabs);
     const body = document.createElement('div');
-    body.className = 'pa-runtime-random-body';
+    body.className = 'pa-random-body';
     const meta = document.createElement('p');
-    meta.className = 'pa-runtime-random-meta';
+    meta.className = 'pa-random-meta';
     const content = document.createElement('div');
+    const footer = document.createElement('div');
+    footer.className = 'pa-random-footer';
 
-    let activeCategory = null;
-    const render = () => {
-        meta.textContent = `候选提示词：${candidateCount(data, [...selectedPaths].map(key => ({ path: JSON.parse(key) })))} 条。选上级而不选下级时将使用该上级全部提示词；选中下级或具体提示词时自动缩小范围。`;
+    const rerender = () => {
+        const count = candidateCount(data, selectionSet);
+        meta.textContent = `候选提示词：${count} 条。点选分类、标签或具体标题即可设置随机范围；绿色为已选，绿色描边为部分选中。`;
         tabs.replaceChildren();
         content.replaceChildren();
-        for (const [categoryName, subtree] of Object.entries(data || {})) {
-            if (!subtree || typeof subtree !== 'object') continue;
-            const tab = document.createElement('button');
-            tab.type = 'button';
-            tab.className = 'pa-runtime-random-tab';
-            const count = document.createElement('span');
-            count.className = 'pa-count';
-            count.textContent = String(collectLeaves(subtree).length);
-            tab.append(document.createTextNode(categoryName), count);
-            tab.onclick = () => {
-                activeCategory = categoryName;
-                tabs.querySelectorAll('.pa-runtime-random-tab').forEach(t => t.classList.remove('active'));
-                tab.classList.add('active');
-                content.replaceChildren(buildGroup(subtree, selectedPaths, render));
-            };
-            tabs.append(tab);
-            if (!activeCategory) {
-                activeCategory = categoryName;
-                tab.classList.add('active');
+        if (query) {
+            tabsContainer.style.display = 'none';
+            content.append(makeSearchResults(data, selectionSet, query, rerender));
+        } else {
+            tabsContainer.style.display = '';
+            for (const [categoryName, categoryData] of Object.entries(data)) {
+                if (!isBranch(categoryData)) continue;
+                const state = selectionState(selectionSet, [categoryName]);
+                const tab = document.createElement('button');
+                tab.type = 'button';
+                tab.className = `popup_tab ${activeCategory === categoryName ? 'active' : ''} ${state === 'all' ? 'pa-selected' : state === 'partial' ? 'pa-partial' : ''}`;
+                tab.textContent = categoryName;
+                tab.onclick = () => {
+                    activeCategory = categoryName;
+                    rerender();
+                };
+                tab.oncontextmenu = event => {
+                    event.preventDefault();
+                    updateSelection(selectionSet, [categoryName]);
+                    rerender();
+                };
+                tabs.append(tab);
+            }
+            const categoryData = data[activeCategory];
+            if (isBranch(categoryData)) {
+                content.append(makeAccordion(activeCategory, categoryData, [activeCategory], selectionSet, '', rerender, true));
             }
         }
-        if (activeCategory && data?.[activeCategory] && typeof data[activeCategory] === 'object') {
-            content.replaceChildren(buildGroup(data[activeCategory], selectedPaths, render));
-        } else if (!content.childNodes.length) {
-            const empty = document.createElement('div');
-            empty.className = 'pa-runtime-random-empty';
-            empty.textContent = '没有可用标签数据';
-            content.append(empty);
-        }
+    };
+
+    search.oninput = () => {
+        query = search.value.trim();
+        rerender();
     };
     sourceSelect.onchange = async () => {
         data = await ResourceManager.loadTagsCsv(sourceSelect.value);
-        selectedPaths.clear();
-        activeCategory = null;
-        render();
+        selectionSet.clear();
+        activeCategory = Object.keys(data).find(key => isBranch(data[key])) || null;
+        query = '';
+        search.value = '';
+        rerender();
     };
-    render();
-    body.append(meta, content);
 
-    const footer = document.createElement('div');
-    footer.className = 'pa-runtime-random-footer';
+    const clearButton = document.createElement('button');
+    clearButton.textContent = '清空选择';
+    clearButton.onclick = () => {
+        selectionSet.clear();
+        rerender();
+    };
+    const actions = document.createElement('div');
+    actions.className = 'pa-random-actions';
     const cancel = document.createElement('button');
     cancel.textContent = '取消';
-    cancel.onclick = () => overlay.remove();
-    const apply = document.createElement('button');
-    apply.className = 'pa-save';
-    apply.textContent = '保存';
-    apply.onclick = () => {
+    cancel.onclick = () => popup.remove();
+    const save = document.createElement('button');
+    save.className = 'pa-random-save';
+    save.textContent = '保存';
+    save.onclick = () => {
         saveConfig(node, widget.inputId, {
             enabled: enabled.checked,
             source_file: sourceSelect.value,
             locked_for_queue: locked.checked,
-            selections: [...selectedPaths].map(key => ({ path: JSON.parse(key) })),
+            selections: selectedPaths(selectionSet).map(path => ({ path })),
         });
         logger.log(`运行时随机提示词已保存 | 节点:${node.id} 输入:${widget.inputId}`);
-        overlay.remove();
+        popup.remove();
     };
-    footer.append(cancel, apply);
-    overlay.append(titleBar, tabs, body, footer);
-    document.body.append(overlay);
+    actions.append(cancel, save);
+    footer.append(clearButton, actions);
+
+    body.append(meta, content);
+    popup.append(titleBar, tabsContainer, body, footer);
+    document.body.append(popup);
+    rerender();
 
     const rect = widget.element?.getBoundingClientRect?.();
-    overlay.style.left = `${Math.max(16, Math.min((rect?.left || 16), window.innerWidth - overlay.offsetWidth - 16))}px`;
-    overlay.style.top = `${Math.max(16, Math.min((rect?.bottom || 16) + 8, window.innerHeight - overlay.offsetHeight - 16))}px`;
+    popup.style.left = `${Math.max(16, Math.min(rect?.left || 16, window.innerWidth - popup.offsetWidth - 16))}px`;
+    popup.style.top = `${Math.max(16, Math.min((rect?.bottom || 16) + 8, window.innerHeight - popup.offsetHeight - 16))}px`;
 }
 
 export function installRuntimeRandomQueueGrouping(api) {
@@ -294,9 +416,7 @@ export function installRuntimeRandomQueueGrouping(api) {
             return original.call(this, number, prompt);
         }
         const queueGroupId = globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random()}`;
-        const nextWorkflow = { ...workflow };
-        const nextPrompt = { ...prompt, workflow: nextWorkflow };
-        nextPrompt.workflow.prompt_assistant_queue_group = queueGroupId;
+        const nextPrompt = { ...prompt, workflow: { ...workflow, prompt_assistant_queue_group: queueGroupId } };
         return original.call(this, number, nextPrompt);
     };
     wrapped.__paRuntimeRandomWrapped = true;
