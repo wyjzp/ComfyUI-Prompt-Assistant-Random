@@ -131,8 +131,9 @@ function styleOverlay() {
         .pa-random-popup .pa-tab-selection-indicator.partial { box-sizing: border-box; background: transparent; border: 2px solid #3fb950; }
         .pa-random-popup .pa-random-body { flex: 1; min-height: 0; overflow-y: auto; padding: 12px; }
         .pa-random-popup .pa-random-meta { margin: 0 0 10px; color: var(--descrip-text, #aaa); font-size: 12px; }
-        .pa-random-popup .tag_accordion { margin: 0 0 8px; border: 0; background: transparent; }
-        .pa-random-popup .tag_accordion_header { display: flex; align-items: center; gap: 8px; padding: 9px 12px; color: inherit; background: #233044; border-radius: 7px; cursor: pointer; user-select: none; }
+        .pa-random-popup .tag_accordion { margin: 0 0 4px; border: 0; background: transparent; }
+        .pa-random-popup .tag_accordion_header { display: flex; align-items: center; gap: 6px; padding: 6px 10px; color: inherit; background: #233044; border-radius: 6px; cursor: pointer; user-select: none; }
+        .pa-random-popup .pa-random-body > .pa-random-chips { gap: 4px; margin: 0; }
         .pa-random-popup .tag_accordion_header.pa-selected { background: #1e6b36; }
         .pa-random-popup .tag_accordion_header.pa-partial { box-shadow: inset 3px 0 #3fb950; }
         .pa-random-popup .pa-random-select-indicator { display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px; border: 1px solid #888; border-radius: 4px; font-size: 12px; color: transparent; flex: none; }
@@ -140,10 +141,10 @@ function styleOverlay() {
         .pa-random-popup .pa-random-select-indicator.partial { border-color: #3fb950; background: linear-gradient(90deg, #3fb950 50%, transparent 50%); }
         .pa-random-popup .tag_accordion_title { flex: 1; }
         .pa-random-popup .pa-random-count { color: #aab7c4; font-size: 12px; font-weight: normal; }
-        .pa-random-popup .tag_accordion_content { display: none; padding: 12px 6px 4px; }
+        .pa-random-popup .tag_accordion_content { display: none; padding: 5px 4px 2px; }
         .pa-random-popup .tag_accordion_content.active { display: block; }
-        .pa-random-popup .pa-random-chips { display: flex; flex-wrap: wrap; gap: 8px; }
-        .pa-random-popup .tag_item { border: 0; border-radius: 18px; padding: 8px 12px; color: inherit; background: var(--comfy-input-bg, #373737); cursor: pointer; white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+        .pa-random-popup .pa-random-chips { display: flex; flex-wrap: wrap; gap: 4px; }
+        .pa-random-popup .tag_item { border: 0; border-radius: 16px; padding: 6px 10px; color: inherit; background: var(--comfy-input-bg, #373737); cursor: pointer; white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
         .pa-random-popup .tag_item:hover { filter: brightness(1.15); }
         .pa-random-popup .tag_item.used { background: #238636; color: #fff; }
         .pa-random-popup .tag_item.partial { box-shadow: inset 0 0 0 2px #3fb950; }
@@ -395,6 +396,25 @@ export async function showRuntimeRandomPromptOverlay(widget) {
                 direct.className = 'pa-random-chips';
                 let firstBranch = true;
                 for (const [name, value] of Object.entries(categoryData)) {
+                    // Some CSV files repeat the root category as their first
+                    // child; the original panel suppresses this duplicate header.
+                    if (name === activeCategory && isBranch(value)) {
+                        for (const [childName, childValue] of Object.entries(value)) {
+                            const childPath = [activeCategory, childName];
+                            if (isBranch(childValue)) direct.append(makeAccordion(childName, childValue, childPath, selectionSet, '', rerender, firstBranch));
+                            else if (searchMatches(childName, childValue, '')) {
+                                const chip = document.createElement('button');
+                                chip.type = 'button';
+                                chip.className = `tag_item ${selectionState(selectionSet, childPath) === 'all' ? 'used' : ''}`;
+                                chip.textContent = childName;
+                                chip.title = childValue;
+                                chip.onclick = () => { updateSelection(selectionSet, childPath); rerender(); };
+                                direct.append(chip);
+                            }
+                            firstBranch = false;
+                        }
+                        continue;
+                    }
                     const path = [activeCategory, name];
                     if (isBranch(value)) {
                         direct.append(makeAccordion(name, value, path, selectionSet, '', rerender, firstBranch));
