@@ -12,6 +12,8 @@ function getConfig(node, inputName) {
         source_file: '',
         locked_for_queue: false,
         placement: 'append',
+        popup_width: 720,
+        popup_height: 560,
         selections: [],
         ...(root.targets?.[inputName] || {}),
     };
@@ -133,7 +135,7 @@ function styleOverlay() {
         .pa-random-popup .pa-random-meta { margin: 0 0 10px; color: var(--descrip-text, #aaa); font-size: 12px; }
         .pa-random-popup .tag_accordion { margin: 0 0 4px; border: 0; background: transparent; }
         .pa-random-popup .tag_accordion_header { display: flex; align-items: center; gap: 6px; padding: 6px 10px; color: inherit; background: #233044; border-radius: 6px; cursor: pointer; user-select: none; }
-        .pa-random-popup .pa-random-body > .pa-random-chips { gap: 4px; margin: 0; }
+        .pa-random-popup .pa-random-body > .pa-random-chips { gap: 1px; margin: 0; }
         .pa-random-popup .tag_accordion_header.pa-selected { background: #1e6b36; }
         .pa-random-popup .tag_accordion_header.pa-partial { box-shadow: inset 3px 0 #3fb950; }
         .pa-random-popup .pa-random-select-indicator { display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px; border: 1px solid #888; border-radius: 4px; font-size: 12px; color: transparent; flex: none; }
@@ -141,10 +143,10 @@ function styleOverlay() {
         .pa-random-popup .pa-random-select-indicator.partial { border-color: #3fb950; background: linear-gradient(90deg, #3fb950 50%, transparent 50%); }
         .pa-random-popup .tag_accordion_title { flex: 1; }
         .pa-random-popup .pa-random-count { color: #aab7c4; font-size: 12px; font-weight: normal; }
-        .pa-random-popup .tag_accordion_content { display: none; padding: 5px 4px 2px; }
+        .pa-random-popup .tag_accordion_content { display: none; padding: 2px 1px 1px; }
         .pa-random-popup .tag_accordion_content.active { display: block; }
-        .pa-random-popup .pa-random-chips { display: flex; flex-wrap: wrap; gap: 4px; }
-        .pa-random-popup .tag_item { border: 0; border-radius: 16px; padding: 6px 10px; color: inherit; background: var(--comfy-input-bg, #373737); cursor: pointer; white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+        .pa-random-popup .pa-random-chips { display: flex; flex-wrap: wrap; gap: 1px; }
+        .pa-random-popup .tag_item { border: 0; border-radius: 12px; padding: 2px 3px; color: inherit; background: var(--comfy-input-bg, #373737); cursor: pointer; white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
         .pa-random-popup .tag_item:hover { filter: brightness(1.15); }
         .pa-random-popup .tag_item.used { background: #238636; color: #fff; }
         .pa-random-popup .tag_item.partial { box-shadow: inset 0 0 0 2px #3fb950; }
@@ -292,7 +294,7 @@ export async function showRuntimeRandomPromptOverlay(widget) {
         persist();
         resizeCleanup?.();
         resizeCleanup = null;
-        if (outsideHandler) document.removeEventListener('mousedown', outsideHandler, true);
+        if (outsideHandler) document.removeEventListener('pointerdown', outsideHandler, true);
         if (activeOverlay === popup) activeOverlay = null;
         if (activeOverlayClose === closePopup) activeOverlayClose = null;
         popup.remove();
@@ -325,6 +327,8 @@ export async function showRuntimeRandomPromptOverlay(widget) {
             source_file: sourceSelect.value,
             locked_for_queue: locked.checked,
             placement: placementSelect.value === 'prepend' ? 'prepend' : 'append',
+            popup_width: popup?.offsetWidth || Number(initial.popup_width) || 720,
+            popup_height: popup?.offsetHeight || Number(initial.popup_height) || 560,
             selections: selectedPaths(selectionSet).map(path => ({ path })),
         });
     };
@@ -483,6 +487,7 @@ export async function showRuntimeRandomPromptOverlay(widget) {
             document.removeEventListener('mousemove', move, true);
             document.removeEventListener('mouseup', stop, true);
             document.body.style.userSelect = '';
+            persist();
         };
         document.addEventListener('mousemove', move, true);
         document.addEventListener('mouseup', stop, true);
@@ -490,10 +495,14 @@ export async function showRuntimeRandomPromptOverlay(widget) {
         resizeCleanup = stop;
     };
     resizeHandle.addEventListener('mousedown', startResize, true);
+    const savedWidth = Number(initial.popup_width);
+    const savedHeight = Number(initial.popup_height);
+    if (Number.isFinite(savedWidth) && savedWidth >= 420) popup.style.width = `${savedWidth}px`;
+    if (Number.isFinite(savedHeight) && savedHeight >= 320) popup.style.height = `${savedHeight}px`;
     outsideHandler = event => {
         if (!popup.contains(event.target)) closePopup();
     };
-    document.addEventListener('mousedown', outsideHandler, true);
+    document.addEventListener('pointerdown', outsideHandler, true);
     rerender();
 
     const rect = widget.element?.getBoundingClientRect?.();
