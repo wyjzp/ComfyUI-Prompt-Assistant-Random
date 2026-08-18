@@ -118,17 +118,17 @@ def join_prompt_text(
     random_text: str,
     placement: str = "append",
 ) -> str:
-    """Combine fixed and random text with a normalized English comma."""
+    """Combine fixed and random text with an English comma on a new line."""
     fixed = "" if fixed_text is None else str(fixed_text).strip()
     selected = str(random_text).strip()
     if not fixed:
         return selected
     if not selected:
         return fixed
-    fixed = fixed.rstrip(" ,，;；\n")
+    fixed = fixed.rstrip(" ,，;； \t\r\n")
     if placement == "prepend":
-        return f"{selected}, {fixed}"
-    return f"{fixed}, {selected}"
+        return f"{selected},\n{fixed}"
+    return f"{fixed},\n{selected}"
 
 
 def choose_candidate(
